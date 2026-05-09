@@ -62,7 +62,7 @@ io.on('connection', (socket) => {
 
 
 // Cron Job (Every 10 Minutes)
-const BACKEND_URL = 'https://expertapp.onrender.com';
+const BACKEND_URL = process.env.BACKEND_URL;
 
 cron.schedule('*/10 * * * *', async () => {
   try {
