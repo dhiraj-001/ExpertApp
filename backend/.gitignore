@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+
+# dotenv environment variables
+.env
+.env.*
+
+# logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# build / deployment artifacts (common for Node)
+coverage/
+dist/
+build/
+
+# caches
+.cache/
+
+# keep secrets out of commits (in case any are generated)
+*.pem
+*.key
+*.crt
+*.csr
+*.pfx
+
