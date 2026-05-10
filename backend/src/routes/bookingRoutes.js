@@ -14,6 +14,6 @@ router.get('/', getBookings);
 
 router.patch('/:id/status', updateBookingStatus);
 
-router.patch('/confirm/:id', confirmBooking);
+router.post('/confirm/:id', confirmBooking);
 
 module.exports = router;
