@@ -19,7 +19,7 @@ import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
-import { api } from "../services/api";
+import { api, socket } from "../services/api";
 import { ThemeContext } from "../context/ThemeContext";
 import { lightColors, darkColors } from "../constants/colors";
 import BookingDetailSheet from "../components/BookingDetailSheet";
@@ -115,6 +115,28 @@ export default function MyBookingsScreen() {
   const [recentSearches, setRecentSearches] = useState([]);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [sheetVisible, setSheetVisible] = useState(false);
+
+  useEffect(() => {
+    const handler = (data) => {
+      setBookings((prevBookings) =>
+        prevBookings.map((booking) =>
+          booking._id === data.bookingId
+            ? { ...booking, status: data.status }
+            : booking
+        )
+      );
+
+      setSelectedBooking((prevSelected) => {
+        if (prevSelected && prevSelected._id === data.bookingId) {
+          return { ...prevSelected, status: data.status };
+        }
+        return prevSelected;
+      });
+    };
+
+    socket.on("bookingStatusUpdated", handler);
+    return () => socket.off("bookingStatusUpdated", handler);
+  }, []);
 
   // Bug fix 1: was calling setItem instead of getItem
   useEffect(() => {

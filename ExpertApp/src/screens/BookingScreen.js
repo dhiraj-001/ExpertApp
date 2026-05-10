@@ -79,6 +79,11 @@ export default function BookingScreen({ route, navigation }) {
         timeSlot,
         notes:     notes.trim(),
       });
+      // Clear form details
+      setName('');
+      setEmail('');
+      setPhone('');
+      setNotes('');
       
       showAlert('Booking confirmed!', "Your booking request has been sent to the Expert", [
         { text: 'Done', onPress: () => navigation.navigate('Experts') },

@@ -74,6 +74,15 @@ exports.updateBookingStatus = async (req, res) => {
     if (!updatedBooking)
       return res.status(404).json({ message: "Booking not found" });
 
+    // Socket.io real-time update for status
+    const io = req.app.get('socketio');
+    if (io) {
+      io.emit('bookingStatusUpdated', {
+        bookingId: updatedBooking._id,
+        status: updatedBooking.status
+      });
+    }
+
     res.json(updatedBooking);
   } catch (error) {
     res.status(500).json({ message: "Update failed", error });
