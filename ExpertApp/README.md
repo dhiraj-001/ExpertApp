@@ -23,6 +23,12 @@ Unlike traditional mobile booking apps that rely on static screen refreshes, thi
 - **Real-Time**: Socket.io-client
 - **State Management**: React Context API & Hooks
 
+## 🌍 Environment Variables
+Create a `.env` file in the root of the project with the following keys:
+```env
+EXPO_PUBLIC_BASE_URL=https://expertapp.onrender.com
+```
+
 ## 📦 Setup Instructions
 
 1. **Install dependencies:**
