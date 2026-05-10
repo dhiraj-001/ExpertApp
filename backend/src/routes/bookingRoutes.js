@@ -4,7 +4,8 @@ const router = express.Router();
 const {
   createBooking,
   getBookings,
-  updateBookingStatus
+  updateBookingStatus,
+  confirmBooking
 } = require('../controllers/bookingController');
 
 router.post('/', createBooking);
