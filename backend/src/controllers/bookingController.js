@@ -104,3 +104,47 @@ exports.getBookings = async (req, res) => {
     });
   }
 };
+
+exports.confirmBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Find the booking first to check its current status
+    const booking = await Booking.findById(id);
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    // 2. Validation: Only allow confirming if it is currently 'Pending'
+    if (booking.status !== 'Pending') {
+      return res.status(400).json({ 
+        message: `Cannot confirm. Booking is currently ${booking.status}` 
+      });
+    }
+
+    // 3. Update the status and save
+    booking.status = 'Confirmed';
+    await booking.save();
+
+    // 4. (Optional) Emit a socket event if your frontend needs real-time status updates
+    const io = req.app.get('socketio');
+    if (io) {
+      io.emit('bookingStatusUpdated', { 
+        bookingId: id, 
+        status: 'Confirmed' 
+      });
+    }
+
+    res.status(200).json({
+      message: "Booking confirmed successfully",
+      booking
+    });
+
+  } catch (error) {
+    res.status(500).json({ 
+      message: "Failed to confirm booking", 
+      error: error.message 
+    });
+  }
+};

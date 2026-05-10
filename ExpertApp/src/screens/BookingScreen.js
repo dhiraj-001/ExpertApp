@@ -80,7 +80,7 @@ export default function BookingScreen({ route, navigation }) {
         notes:     notes.trim(),
       });
       
-      showAlert('Booking confirmed!', "We've sent the details to your email.", [
+      showAlert('Booking confirmed!', "Your booking request has been sent to the Expert", [
         { text: 'Done', onPress: () => navigation.navigate('Experts') },
       ]);
     } catch (error) {
