@@ -45,6 +45,38 @@ function buildDateRange() {
 
 const DATE_RANGE = buildDateRange();
 
+// Add this below your DATE_RANGE constant
+const isSlotPassed = (selectedDateStr, slotStr) => {
+  const now = new Date();
+  
+  // Format today's local date to match your YYYY-MM-DD format
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
+
+  // If the selected date is in the past
+  if (selectedDateStr < todayStr) return true;
+  // If the selected date is in the future
+  if (selectedDateStr > todayStr) return false;
+
+  // If the selected date is TODAY, we check the exact hour and minute
+  const [time, modifier] = slotStr.split(' ');
+  let [hours, minutes] = time.split(':').map(Number);
+
+  if (modifier === 'PM' && hours < 12) hours += 12;
+  if (modifier === 'AM' && hours === 12) hours = 0;
+
+  const currentHours = now.getHours();
+  const currentMinutes = now.getMinutes();
+
+  // Return true if the slot hour has passed, or if it's the current hour but the minutes have passed
+  if (hours < currentHours) return true;
+  if (hours === currentHours && minutes <= currentMinutes) return true;
+
+  return false;
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 const DatePill = React.memo(function DatePill({ item, isSelected, onPress, styles }) {
   return (
@@ -63,20 +95,23 @@ const DatePill = React.memo(function DatePill({ item, isSelected, onPress, style
   );
 });
 
-const SlotButton = React.memo(function SlotButton({ slot, isBooked, onPress, styles }) {
+const SlotButton = React.memo(function SlotButton({ slot, isBooked, isPassed, onPress, styles }) {
   const [hour, period] = slot.split(' ');
+  const disabled = isBooked || isPassed;
+  const label = isPassed ? 'Passed' : isBooked ? 'Booked' : period;
+
   return (
     <TouchableOpacity
-      onPress={() => !isBooked && onPress(slot)}
-      disabled={isBooked}
+      onPress={() => !disabled && onPress(slot)}
+      disabled={disabled}
       activeOpacity={0.8}
-      style={[styles.slot, isBooked ? styles.slotBooked : styles.slotAvailable]}
+      style={[styles.slot, disabled ? styles.slotBooked : styles.slotAvailable]}
     >
-      <Text style={[styles.slotTime, isBooked && styles.slotTimeBooked]}>
+      <Text style={[styles.slotTime, disabled && styles.slotTimeBooked]}>
         {hour}
       </Text>
-      <Text style={[styles.slotPeriod, isBooked && styles.slotPeriodBooked]}>
-        {isBooked ? 'Booked' : period}
+      <Text style={[styles.slotPeriod, disabled && styles.slotPeriodBooked]}>
+        {label}
       </Text>
     </TouchableOpacity>
   );
@@ -226,7 +261,6 @@ export default function ExpertDetailScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Slots grid */}
         {loading ? (
           <ActivityIndicator
             size="small"
@@ -235,15 +269,21 @@ export default function ExpertDetailScreen({ route, navigation }) {
           />
         ) : (
           <View style={styles.slotsGrid}>
-            {ALL_SLOTS.map(slot => (
-              <SlotButton
-                key={slot}
-                slot={slot}
-                isBooked={bookedSlots.includes(slot)}
-                onPress={handleSlotPress}
-                styles={styles}
-              />
-            ))}
+            {ALL_SLOTS.map(slot => {
+              // Calculate if the specific slot has passed
+              const passed = isSlotPassed(selectedDate, slot);
+              
+              return (
+                <SlotButton
+                  key={slot}
+                  slot={slot}
+                  isBooked={bookedSlots.includes(slot)}
+                  isPassed={passed} // Pass the new prop here
+                  onPress={handleSlotPress}
+                  styles={styles}
+                />
+              );
+            })}
           </View>
         )}
 

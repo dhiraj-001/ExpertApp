@@ -1,78 +1,141 @@
 import React, { useState, useEffect, useMemo, useCallback, useContext } from 'react';
 import {
-  View,
-  FlatList,
-  StyleSheet,
-  RefreshControl,
-  TouchableOpacity,
-  ScrollView,
-  StatusBar,
+  View, FlatList, StyleSheet, RefreshControl,
+  TouchableOpacity, StatusBar,
 } from 'react-native';
-import { Text, Searchbar, ActivityIndicator, Chip } from 'react-native-paper';
+import { Text, Searchbar, ActivityIndicator } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../services/api';
 import ExpertCard from '../components/ExpertCard';
-
-// 1. Import your new Theme features
 import ThemeToggle from '../components/ThemeToggle';
+import FilterSheet from '../components/FilterSheet';
 import { ThemeContext } from '../context/ThemeContext';
-import { lightColors, darkColors } from '../constants/colors'; 
+import { lightColors, darkColors } from '../constants/colors';
+
+const TODAY = new Date().toISOString().split('T')[0];
+
+const DEFAULT_FILTERS = {
+  sortBy:         null,
+  sortDir:        'desc',
+  category:       'All',
+  availableToday: false,
+  minRating:      null,
+  minExperience:  null,
+};
 
 export default function ExpertListScreen({ navigation }) {
-  // 2. Consume the ThemeContext instead of the system theme
   const { isDarkMode } = useContext(ThemeContext);
-  
-  // Assign the correct palette dynamically based on our context
   const COLORS = isDarkMode ? darkColors : lightColors;
+  const styles = useMemo(() => getStyles(COLORS, isDarkMode), [COLORS]);
 
-  // Generate the dynamic styles based on the current theme
-  const styles = useMemo(() => getStyles(COLORS), [COLORS]);
-
+  // Data & Pagination State
   const [allExperts, setAllExperts] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+
+  // UI State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [sheetVisible, setSheetVisible] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchExperts = useCallback(async () => {
+  const fetchExperts = useCallback(async (pageNum = 1, shouldRefresh = false) => {
     try {
+      if (pageNum === 1 && !shouldRefresh) setLoading(true);
+      if (pageNum > 1) setLoadingMore(true);
       setError(null);
-      const res = await api.get('/experts'); 
-      setAllExperts(res.data.experts || res.data || []);
+
+      // Fetching with explicit limit to handle backend pagination
+      const res = await api.get(`/experts?page=${pageNum}&limit=6`);
+      const newExperts = res.data.experts ?? res.data ?? [];
+      
+      const totalPages = res.data.totalPages || 1;
+      setHasMore(pageNum < totalPages);
+
+      if (pageNum === 1) {
+        setAllExperts(newExperts);
+      } else {
+        setAllExperts(prev => [...prev, ...newExperts]);
+      }
     } catch (err) {
-      console.error('Failed to fetch experts:', err);
+      console.error(err);
       setError('Unable to load experts. Please check your connection.');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
       setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchExperts();
+  useEffect(() => { 
+    fetchExperts(1); 
   }, [fetchExperts]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchExperts();
+    setPage(1);
+    fetchExperts(1, true);
   }, [fetchExperts]);
 
-  const dynamicCategories = useMemo(() => {
-    const uniqueCategories = [...new Set(allExperts.map(expert => expert.category))];
-    const cleanCategories = uniqueCategories.filter(Boolean).sort();
-    return ['All', ...cleanCategories];
+  const loadMore = useCallback(() => {
+    if (!loading && !loadingMore && hasMore) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchExperts(nextPage);
+    }
+  }, [loading, loadingMore, hasMore, page, fetchExperts]);
+
+  const categories = useMemo(() => {
+    const unique = [...new Set(allExperts.map(e => e.category))].filter(Boolean).sort();
+    return ['All', ...unique];
   }, [allExperts]);
 
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (filters.sortBy) n++;
+    if (filters.category !== 'All') n++;
+    if (filters.availableToday) n++;
+    if (filters.minRating) n++;
+    if (filters.minExperience) n++;
+    return n;
+  }, [filters]);
+
+  const clearAll = useCallback(() => {
+    setFilters(DEFAULT_FILTERS);
+    setSearchQuery('');
+  }, []);
+
   const displayedExperts = useMemo(() => {
-    return allExperts.filter(expert => {
-      const matchesCategory = selectedCategory === 'All' || expert.category === selectedCategory;
-      const matchesSearch = expert.name.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
+    let list = allExperts.filter(expert => {
+      if (filters.category !== 'All' && expert.category !== filters.category) return false;
+      if (searchQuery && !expert.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (filters.availableToday) {
+        if (!expert.availableSlots?.some(s => s.startsWith(TODAY))) return false;
+      }
+      if (filters.minRating && (parseFloat(expert.rating) || 0) < filters.minRating) return false;
+      if (filters.minExperience && (parseInt(expert.experience) || 0) < filters.minExperience) return false;
+      return true;
     });
-  }, [allExperts, searchQuery, selectedCategory]);
+
+    if (filters.sortBy) {
+      const dir = filters.sortDir === 'asc' ? 1 : -1;
+      list = [...list].sort((a, b) => {
+        if (filters.sortBy === 'rating')
+          return dir * ((parseFloat(a.rating) || 0) - (parseFloat(b.rating) || 0));
+        if (filters.sortBy === 'experience')
+          return dir * ((parseInt(a.experience) || 0) - (parseInt(b.experience) || 0));
+        if (filters.sortBy === 'slots')
+          return dir * ((a.availableSlots?.length || 0) - (b.availableSlots?.length || 0));
+        return 0;
+      });
+    }
+    return list;
+  }, [allExperts, searchQuery, filters]);
 
   const renderItem = useCallback(({ item }) => (
     <ExpertCard
@@ -81,13 +144,21 @@ export default function ExpertListScreen({ navigation }) {
     />
   ), [navigation]);
 
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={{ paddingVertical: 20 }}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
+      </View>
+    );
+  };
+
+  const hasAnyActive = activeFilterCount > 0 || searchQuery.length > 0;
+
   if (loading) {
     return (
       <SafeAreaView style={styles.loaderContainer}>
-        <StatusBar 
-          barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
-          backgroundColor={COLORS.background} 
-        />
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={COLORS.background} />
         <ActivityIndicator size="large" color={COLORS.primary} />
       </SafeAreaView>
     );
@@ -95,20 +166,29 @@ export default function ExpertListScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar 
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
-        backgroundColor={COLORS.background} 
-      />
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={COLORS.background} />
 
-      {/* 3. Updated Header with the Toggle Button */}
       <View style={styles.headerRow}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.heading}>Find Experts</Text>
           <Text style={styles.subHeading}>Book sessions with top professionals</Text>
         </View>
-        
-        {/* Universal Theme Toggle Button */}
-        <ThemeToggle />
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.filterBtn}
+            onPress={() => setSheetVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="options-outline" size={17} color={COLORS.text} />
+            <Text style={styles.filterBtnText}>Filter</Text>
+            {activeFilterCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <ThemeToggle />
+        </View>
       </View>
 
       <Searchbar
@@ -122,84 +202,69 @@ export default function ExpertListScreen({ navigation }) {
         clearIconColor={COLORS.subText}
       />
 
-      <View style={styles.filterContainer}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterScroll}
-        >
-          {dynamicCategories.map((category) => (
-            <Chip
-              key={category}
-              selected={selectedCategory === category}
-              onPress={() => setSelectedCategory(category)}
-              style={[
-                styles.chip,
-                selectedCategory === category && styles.chipSelected
-              ]}
-              textStyle={[
-                styles.chipText,
-                selectedCategory === category && styles.chipTextSelected
-              ]}
-              showSelectedOverlay={false}
-            >
-              {category}
-            </Chip>
-          ))}
-        </ScrollView>
+      <View style={styles.resultRow}>
+        <Text style={styles.resultText}>
+          {displayedExperts.length} expert{displayedExperts.length !== 1 ? 's' : ''} found
+        </Text>
+        {hasAnyActive && (
+          <TouchableOpacity onPress={clearAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.clearText}>Clear all</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {error ? (
         <View style={styles.centerContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity 
-            style={styles.retryButton} 
-            onPress={() => {
-              setLoading(true);
-              fetchExperts();
-            }}
-          >
+          <TouchableOpacity style={styles.retryButton} onPress={() => fetchExperts(1)}>
             <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={displayedExperts}
-          keyExtractor={(item) => item._id?.toString() || Math.random().toString()}
+          keyExtractor={item => item._id?.toString() ?? Math.random().toString()}
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={renderFooter}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={COLORS.primary}
               colors={[COLORS.primary]}
-              progressBackgroundColor={COLORS.background} 
+              progressBackgroundColor={COLORS.card}
             />
           }
           ListEmptyComponent={
             <View style={styles.centerContainer}>
               <Text style={styles.emptyText}>No experts found</Text>
-              <Text style={styles.emptySubText}>
-                Try adjusting your search or filters.
-              </Text>
+              <Text style={styles.emptySubText}>Try adjusting your filters.</Text>
             </View>
           }
         />
       )}
+
+      <FilterSheet
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+        categories={categories}
+        filters={filters}
+        onApply={setFilters}
+        resultCount={displayedExperts.length}
+      />
     </SafeAreaView>
   );
 }
 
-// Wrap the StyleSheet in a function to accept dynamic COLORS
-const getStyles = (COLORS) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  // Updated header to a flex row so the button sits on the right
+const getStyles = (COLORS, isDarkMode) => StyleSheet.create({
+  container:       { flex: 1, backgroundColor: COLORS.background },
+  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
+
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -208,100 +273,67 @@ const getStyles = (COLORS) => StyleSheet.create({
     marginBottom: 20,
     paddingHorizontal: 16,
   },
-  heading: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: COLORS.text,
-    letterSpacing: -0.5,
+  heading:    { fontSize: 32, fontWeight: '800', color: COLORS.text, letterSpacing: -0.8 },
+  subHeading: { marginTop: 4, color: COLORS.subText, fontSize: 14, fontWeight: '500' },
+
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+
+  filterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
-  subHeading: {
-    marginTop: 4,
-    color: COLORS.subText,
-    fontSize: 15,
+  filterBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  badge: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 99,
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  badgeText: { fontSize: 10, fontWeight: '800', color: '#fff' },
+
   search: {
-    marginBottom: 16,
+    marginBottom: 12,
     marginHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: COLORS.glassBg, 
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder, 
-    elevation: 0, 
-  },
-  searchInput: {
-    color: COLORS.text,
-    fontSize: 16,
-  },
-  filterContainer: {
-    marginBottom: 16,
-  },
-  filterScroll: {
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  chip: {
-    backgroundColor: COLORS.glassBg, 
+    backgroundColor: COLORS.glassBg,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
-    borderRadius: 24, 
+    elevation: 0,
+    shadowOpacity: 0,
   },
-  chipSelected: {
-    backgroundColor: COLORS.primaryGlass, 
-    borderColor: COLORS.primary, 
-  },
-  chipText: {
-    color: COLORS.subText,
-    fontWeight: '500',
-  },
-  chipTextSelected: {
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  searchInput: { color: COLORS.text, fontSize: 15 },
+
+  resultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  listContent: {
-    paddingBottom: 120,
     paddingHorizontal: 16,
-    flexGrow: 1,
+    marginBottom: 12,
   },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 60,
-  },
-  emptyText: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  emptySubText: {
-    color: COLORS.subText,
-    fontSize: 14,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  errorText: {
-    color: COLORS.subText,
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
+  resultText: { fontSize: 11, fontWeight: '600', color: COLORS.subText, letterSpacing: 0.4 },
+  clearText:  { fontSize: 12, fontWeight: '700', color: COLORS.primary },
+
+  listContent:    { paddingBottom: 120, paddingHorizontal: 16, flexGrow: 1 },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 60 },
+  emptyText:       { color: COLORS.text, fontSize: 18, fontWeight: '700' },
+  emptySubText:    { color: COLORS.subText, fontSize: 14, marginTop: 8, textAlign: 'center' },
+  errorText:       { color: COLORS.subText, fontSize: 15, textAlign: 'center', marginBottom: 16 },
   retryButton: {
     backgroundColor: COLORS.primaryGlass,
     borderWidth: 1,
     borderColor: COLORS.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 14,
   },
-  retryText: {
-    color: COLORS.primary, 
-    fontWeight: '700',
-    fontSize: 14,
-  },
+  retryText: { color: COLORS.primary, fontWeight: '700', fontSize: 14 },
 });

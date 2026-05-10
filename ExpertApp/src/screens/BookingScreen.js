@@ -2,7 +2,6 @@ import React, { useState, useContext, useMemo } from 'react';
 import {
   View,
   StyleSheet,
-  Alert,
   ScrollView,
   TouchableOpacity,
   KeyboardAvoidingView,
@@ -17,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../services/api';
 import { ThemeContext } from '../context/ThemeContext';
 import { lightColors, darkColors } from '../constants/colors';
+import CustomAlert from '../components/CustomAlert';
 
 export default function BookingScreen({ route, navigation }) {
   const { expert, selectedDate, timeSlot } = route.params;
@@ -31,13 +31,41 @@ export default function BookingScreen({ route, navigation }) {
   const [notes, setNotes] = useState(''); 
   const [loading, setLoading] = useState(false);
 
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [],
+  });
+
+  const showAlert = (title, message, buttons = []) => {
+    setAlertConfig({ visible: true, title, message, buttons });
+  };
+
+  const hideAlert = () => {
+    setAlertConfig(prev => ({ ...prev, visible: false }));
+  };
+
   const handleBooking = async () => {
     if (!name.trim() || !email.trim() || !phone.trim()) {
-      return Alert.alert('Missing details', 'Please fill in all fields before continuing.');
+      return showAlert('Missing details', 'Please fill in all fields before continuing.');
     }
+
+    // Email Validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return showAlert('Invalid email', 'Please enter a valid email address.');
+    }
+
+    // Phone Validation: Removes spaces/dashes and checks for 10 to 15 digits (with optional +)
+    const cleanPhone = phone.replace(/[\s\-]/g, '');
+    const phoneRegex = /^\+?[0-9]{10,15}$/;
+    
+    if (!phoneRegex.test(cleanPhone)) {
+      return showAlert(
+        'Invalid phone number', 
+        'Please enter a valid phone number (e.g., 9876543210 or +91 98765 43210).'
+      );
     }
 
     setLoading(true);
@@ -46,22 +74,22 @@ export default function BookingScreen({ route, navigation }) {
         expertId:  expert._id,
         userName:  name.trim(),
         userEmail: email.toLowerCase().trim(),
-        phone:     phone.trim(),
+        phone:     cleanPhone, // Sending the cleaned phone number to the database is a good practice
         date:      selectedDate,
         timeSlot,
         notes:     notes.trim(),
       });
-      Alert.alert('Booking confirmed!', "We've sent the details to your email.", [
+      
+      showAlert('Booking confirmed!', "We've sent the details to your email.", [
         { text: 'Done', onPress: () => navigation.navigate('Experts') },
       ]);
     } catch (error) {
       console.error('Booking error:', error.response?.data);
-      Alert.alert('Something went wrong', error.response?.data?.message || 'Please try again.');
+      showAlert('Something went wrong', error.response?.data?.message || 'Please try again.');
     } finally {
       setLoading(false);
     }
   };
-
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
@@ -185,6 +213,14 @@ export default function BookingScreen({ route, navigation }) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        onDismiss={hideAlert}
+      />
     </SafeAreaView>
   );
 }

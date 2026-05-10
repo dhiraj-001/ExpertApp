@@ -158,7 +158,7 @@ const seedDB = async () => {
     // Insert new data with 'amount' field
     await Expert.insertMany(experts);
 
-    console.log("Database Seeded Successfully with 'amount' field.");
+    console.log("Database Seeded Successfully.");
     process.exit();
   } catch (error) {
     console.error("Error seeding database:", error);
