@@ -104,31 +104,3 @@ exports.getBookings = async (req, res) => {
     });
   }
 };
-
-exports.confirmBooking = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // 1. Find the booking
-    const booking = await Booking.findById(id);
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    // 2. Update status
-    booking.status = 'Confirmed';
-    await booking.save();
-
-    // 3. Emit update using the ID
-    const io = req.app.get('socketio');
-    if (io) {
-      io.emit('bookingStatusUpdated', { bookingId: id, status: 'Confirmed' });
-    }
-
-    res.status(200).json({ message: "Booking confirmed", bookingId: id });
-
-  } catch (error) {
-    res.status(500).json({ message: "Error", error: error.message });
-  }
-};
