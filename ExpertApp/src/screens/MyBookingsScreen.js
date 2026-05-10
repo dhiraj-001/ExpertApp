@@ -90,12 +90,6 @@ const BookingCard = React.memo(function BookingCard({
           <Text style={styles.pillLabel}>Time slot</Text>
           <Text style={styles.pillVal}>{item.timeSlot || "—"}</Text>
         </View>
-        <View style={styles.pill}>
-          <Text style={styles.pillLabel}>Amount</Text>
-          <Text style={[styles.pillVal, { color: COLORS.primary }]}>
-            {item.amount ? `₹${item.amount}` : "—"}
-          </Text>
-        </View>
       </View>
 
       {/* Tap hint */}
