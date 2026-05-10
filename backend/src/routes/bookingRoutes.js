@@ -5,7 +5,6 @@ const {
   createBooking,
   getBookings,
   updateBookingStatus,
-  confirmBooking
 } = require('../controllers/bookingController');
 
 router.post('/', createBooking);
